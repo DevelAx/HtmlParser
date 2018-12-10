@@ -188,9 +188,4 @@ function expectNode(node, check) {
         let prop = check[key];
         expect(node[key], "node " + key).to.equal(prop);
     }
-
-    // expect(node.type, "node type").to.equal(args.type);
-    // expect(node.tagName, "tag name").to.equal(args.tagName);
-    // expect(node.content, "node content").to.equal(args.content);
-    // expect(node.isVoid, "self closing tag").to.equal(args.isVoid);
 }
