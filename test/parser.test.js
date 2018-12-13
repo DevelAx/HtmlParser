@@ -232,6 +232,13 @@ describe("Single HTML nodes.", () => {
             expect(result, "result exists").to.throw(`'</a>' tag at line 1 pos 1 is missing mathing start tag.`);
         });
     }
+    {
+        let test = '<a></c></a>';
+        it("[#7.3]: " + test, () => {
+            let result = () => parser.parse(test);
+            expect(result, "result exists").to.throw(`'</c>' tag at line 1 pos 4 is missing mathing start tag.`);
+        });
+    }
 });
 
 function expectNode(node, check) {
