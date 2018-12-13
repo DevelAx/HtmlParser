@@ -14,7 +14,7 @@ module.exports = {
 
 function parse(html) {
     init(html);
-    parseHtml();
+    parseDocument();
     return _nodes;
 }
 
@@ -30,41 +30,88 @@ function init(text) {
 }
 
 // <html> = [<node>]*
-function parseHtml() {
+function parseDocument(parent) {
     while (_ch) {
-        parseNode();
+        parseNode(parent);
     }
 }
 
 // <node> = <tag>|<text>
-function parseNode() {
+function parseNode(parent) {
     if (_ch === '<')
-        return parseTag();
+        return parseHtmlBlock(parent);
 
-    parseText();
+    parseText(parent);
 }
 
-// <tag> = '<' + <tagName>[space]*[/]*'>' //<openTag>[<html>]*<closeTag>|<self-close-tag>
+// <tag> = '<' + tagName[space]*[/]*'>[<html>]*[</tag>]*' //<openTag>[<html>]*<closeTag>|<self-close-tag>
+function parseHtmlBlock(parent) {
+    let tag = parseTag();
+
+    if (tag.closing) {
+        if (parent && parent.tagName === tag.tagName) {
+            // [^0] this is the closing tag of the upper level block (mustn't be put into the list)
+            parent.endHtml = tag.tagName;
+            parent.closing = true;
+            parent.opening = false;
+            return;
+        }
+        missingMatchingStartTag(tag);
+    }
+
+    // this is the current level (void or opening) tag
+    tag.parent = parent;
+    _nodes.push(tag); // put into this level
+
+    if (tag.void) // just one tag on this level
+        return;
+
+    // it is `tag.opening`, prepare going down to the next level, create child-nodes
+    let nodes = _nodes;
+    _nodes = [];
+
+    parseDocument(tag); // possibly returns from [^0] to this level
+
+    tag.children = _nodes; // save the deeper level nodes as children of the current open tag and restore the node list
+    _nodes = nodes;
+}
+
+// tag := < + [/]* + name + spaces + [/]* + >
 function parseTag() {
     match('<');
     var node = new HtmlNode(nodeType.tag, _ch);
     readChar();
+
+    if (_ch === '/') {
+        node.closing = true;
+        node.startHtml += _ch;
+        readChar();
+    }
+
     parseTagName(node);
     parseSpace(node);
 
-    if (_ch === '/'){
-        node.content += _ch;
-        readChar();
-        node.isVoid = true; // https://www.w3.org/TR/html5/syntax.html#void-elements
+    if (!node.closing) {
+        if (_ch === '/') {
+            node.void = true; // https://www.w3.org/TR/html5/syntax.html#void-elements
+            node.startHtml += _ch;
+            readChar();
+        }
+        else {
+            node.opening = true;
+        }
     }
 
     match('>');
-    node.content += _ch;
+    node.startHtml += _ch;
     readChar();
 
-    if (node.content)
-        _nodes.push(node);
+    // if (node.startHtml)
+    //     _nodes.push(node);
+    return node;
 }
+
+
 
 // <tagName> = <char>[<char>]*
 function parseTagName(node) {
@@ -72,30 +119,31 @@ function parseTagName(node) {
     let tagName = '';
 
     while (!end() && isNameChar(_ch)) {
-        node.content += _ch;
+        node.startHtml += _ch;
         tagName += _ch;
         readChar();
     }
 
-    node.tagName = tagName;
+    node.tagName = tagName.toLowerCase();
 }
 
 // <text> = [<char>]*;
-function parseText() {
+function parseText(parent) {
     var node = new HtmlNode(nodeType.text, '');
+    node.parent = parent;
 
     while (!end() && _ch != '<') {
-        node.content += _ch;
+        node.startHtml += _ch;
         readChar();
     }
 
-    if (node.content)
+    if (node.startHtml)
         _nodes.push(node);
 }
 
 function parseSpace(node) {
     while (!end() && isLineSpace(_ch)) {
-        node.content += _ch;
+        node.startHtml += _ch;
         readChar();
     }
 }
@@ -128,10 +176,14 @@ function matchAlpha(name = "Alphabet letter") {
         return onError(er.charExpected(name, _line + 1, _pos));
 }
 
+function missingMatchingStartTag(tag) {
+    return onError(er.missingMatchingStartTag(tag.startHtml, _line + 1, _pos - tag.startHtml.length))
+}
+
 function onError(message, capture) {
     printError(message);
     capture = capture || onError;
-    throw new ParserError({message, capture});
+    throw new ParserError({ message, capture });
 }
 
 function printError(err) {
@@ -139,9 +191,9 @@ function printError(err) {
 }
 
 class HtmlNode {
-    constructor(type, content) {
+    constructor(type, html) {
         this.type = type;
-        this.content = content;
+        this.startHtml = html;
     }
 }
 
@@ -151,6 +203,13 @@ function isAlpha(c) {
 
     c = c.toUpperCase();
     return (c >= 'A' && c <= 'Z');
+}
+
+function lastNode() {
+    if (!_nodes.length)
+        return;
+
+    return _nodes[_nodes.length - 1];
 }
 
 function isNameChar(c) {
@@ -167,4 +226,3 @@ function isSpace(c) {
 function isLineSpace(c) {
     return c === ' ' || c === '\t';
 }
-
