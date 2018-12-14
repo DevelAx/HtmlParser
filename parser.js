@@ -5,15 +5,15 @@ require("./helpers/pathHelper.js")(__dirname);
 const ParserError = require("./ParserError");
 const er = require("./parser.errors");
 
-const nodeTypes = { text: 0, tag: 1 }
-const tagTypes = { opening: 0, closing: 1, void: 2, paired: 3 }
+const nodeTypes = { text: 0, tag: 1 };
+const tagTypes = { opening: 0, closing: 1, void: 2, paired: 3, doctype: 4 };
 const voidTagNames = "area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr".toLowerCase().split("|").map(s => s.trim());
 
 module.exports = {
     parse,
     nodeTypes,
     tagTypes
-}
+};
 
 function parse(html) {
     init(html);
@@ -22,20 +22,21 @@ function parse(html) {
 }
 
 //-------------CRADLE----------------
-var _text, _ch, _pos, _line;
+var _text, _ch, _offset, _line, _pos;
 var _nodes;
 
 function init(text) {
     _nodes = [];
     _text = text;
-    _line = _pos = 0;
+    _pos = _line = _offset = 0;
     readChar();
 }
 
 // <html> = [<node>]*
 function parseDocument(parent) {
     while (_ch) {
-        parseNode(parent);
+        if (parseNode(parent))
+            return;
     }
 }
 
@@ -54,11 +55,17 @@ function parseHtmlBlock(parent) {
     if (tag.tagType === tagTypes.closing) {
         if (parent && parent.tagName === tag.tagName) {
             // [^0] this is the closing tag of the upper level block (mustn't be put into the list)
-            parent.endHtml = tag.tagName;
+            parent.endHtml = tag.startHtml;
             parent.tagType = tagTypes.paired;
-            return;
+            return true;
         }
         missingMatchingStartTag(tag);
+    }
+    else if (tag.tagType === tagTypes.doctype) {
+        if (parent || _nodes.some(n => n.tagType))
+            strayDoctype(tag);
+        else
+            return;
     }
 
     // this is the current level (void or opening) tag
@@ -87,50 +94,37 @@ function parseTag() {
 
     if (_ch === '/') {
         node.tagType = tagTypes.closing
-        node.startHtml += _ch;
-        readChar();
+        node.grabChar();
+    }
+    else if (_ch === '!') {
+        node.tagType = tagTypes.doctype;
+        node.grabChar();
     }
 
     parseTagName(node);
     parseSpace(node);
+    parseTagAttributes(node);
 
     if (node.tagType !== tagTypes.closing) {
         if (_ch === '/') {
             node.tagType = tagTypes.void; // https://www.w3.org/TR/html5/syntax.html#void-elements
             node.startHtml += _ch;
             readChar();
-        } 
-        else if (voidTagNames.includes(node.tagName.toLowerCase())){
+        }
+        else if (voidTagNames.includes(node.tagName.toLowerCase())) {
             node.tagType = tagTypes.void;
         }
-        else {
+        else if (node.tagType !== tagTypes.doctype) {
             node.tagType = tagTypes.opening;
         }
     }
 
     match('>');
-    node.startHtml += _ch;
-    readChar();
+    node.grabChar();
 
     // if (node.startHtml)
     //     _nodes.push(node);
     return node;
-}
-
-
-
-// <tagName> = <char>[<char>]*
-function parseTagName(node) {
-    matchAlpha('tag name');
-    let tagName = '';
-
-    while (!end() && isNameChar(_ch)) {
-        node.startHtml += _ch;
-        tagName += _ch;
-        readChar();
-    }
-
-    node.tagName = tagName.toLowerCase();
 }
 
 // <text> = [<char>]*;
@@ -138,20 +132,43 @@ function parseText(parent) {
     var node = new HtmlNode(nodeTypes.text, '');
     node.parent = parent;
 
-    while (!end() && _ch != '<') {
-        node.startHtml += _ch;
-        readChar();
-    }
+    while (!end() && _ch !== '<')
+        node.grabChar();
 
     if (node.startHtml)
         _nodes.push(node);
 }
 
-function parseSpace(node) {
-    while (!end() && isLineSpace(_ch)) {
-        node.startHtml += _ch;
-        readChar();
+// <tagName> = <char>[<char>]*
+function parseTagName(node) {
+    matchAlpha('tag name');
+    let tagName = '';
+
+    while (!end() && !isSpace(_ch) && _ch !== '/' && _ch !== '>') {
+        tagName += _ch;
+        node.grabChar();
     }
+
+    node.tagName = tagName.toLowerCase();
+}
+
+function parseSpace(node) {
+    while (!end() && isLineSpace(_ch))
+        node.grabChar();
+}
+
+function parseTagAttributes(node) {
+    if (!isAlpha(_ch))
+        return;
+
+    let attr = '';
+
+    while (!end() && _ch !== '/' && _ch !== '>') {
+        attr += _ch;
+        node.grabChar();
+    }
+
+    node.tagAttributes = attr;
 }
 
 
@@ -169,25 +186,35 @@ function readChar() {
     if (!_text)
         return;
 
-    _ch = _text[_pos++];
+    _pos += 1;
+    _ch = _text[_offset++];
+
+    if (_ch === '\n'){
+        _line += 1;
+        _pos = 0;
+    }
 }
 
 function match(ch) {
     if (_ch !== ch)
-        return onError(er.charExpected(ch, _line + 1, _pos));
+        return onError(er.charExpected(ch, _line + 1, _offset));
 }
 
 function matchAlpha(name = "Alphabet letter") {
     if (!isAlpha(_ch))
-        return onError(er.charExpected(name, _line + 1, _pos));
+        return onError(er.charExpected(name, _line + 1, _offset));
 }
 
 function missingMatchingStartTag(tag) {
-    return onError(er.missingMatchingStartTag(tag.startHtml, _line + 1, _pos - tag.startHtml.length));
+    return onError(er.missingMatchingStartTag(tag.startHtml, tag.line + 1, tag.pos));
 }
 
-function missingMatchingEndTag(tag){
-    return onError(er.missingMatchingEndTag(tag.startHtml, _line + 1, _pos - tag.startHtml.length));
+function missingMatchingEndTag(tag) {
+    return onError(er.missingMatchingEndTag(tag.startHtml, tag.line + 1, tag.pos));
+}
+
+function strayDoctype(tag) {
+    return onError(er.strayDoctype(tag.startHtml, tag.line + 1, tag.pos))
 }
 
 function onError(message, capture) {
@@ -204,6 +231,13 @@ class HtmlNode {
     constructor(type, html) {
         this.type = type;
         this.startHtml = html;
+        this.line = _line;
+        this.pos = _pos;
+    }
+
+    grabChar() {
+        this.startHtml += _ch;
+        readChar();
     }
 }
 

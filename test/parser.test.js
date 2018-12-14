@@ -260,6 +260,45 @@ describe("Single HTML nodes.", () => {
             expect(result, "error expected").to.throw(`'</c>' tag at line 1 pos 4 is missing matching start tag.`);
         });
     }
+    {
+        let test = `
+<!DOCTYPE html>
+<html>
+<head>
+<title>Page Title</title>
+</head>
+<body>
+
+<h1>This is a Heading</h1>
+<p>This is a paragraph.</p>
+
+</body>
+</html>`;
+        it("[#10]: " + test, () => {
+            let result = parser.parse(test);
+            expect(result, "result exists").to.exist;
+        });
+    }
+
+    {
+        let test = `
+<html>
+<!DOCTYPE html>
+<head>
+<title>Page Title</title>
+</head>
+<body>
+
+<h1>This is a Heading</h1>
+<p>This is a paragraph.</p>
+
+</body>
+</html>`;
+        it("[#10.1]: " + test, () => {
+            let result = () => parser.parse(test);
+            expect(result, "error expected").to.throw(`Stray doctype at line 3 pos 1. '<!DOCTYPE html>' tag must be placed in the beginning before any tags.`);
+        });
+    }
 });
 
 function expectNode(node, check) {
