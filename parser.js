@@ -5,11 +5,14 @@ require("./helpers/pathHelper.js")(__dirname);
 const ParserError = require("./ParserError");
 const er = require("./parser.errors");
 
-const nodeType = { text: 0, tag: 1 }
+const nodeTypes = { text: 0, tag: 1 }
+const tagTypes = { opening: 0, closing: 1, void: 2, paired: 3 }
+const voidTagNames = "area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr".toLowerCase().split("|").map(s => s.trim());
 
 module.exports = {
     parse,
-    nodeType
+    nodeTypes,
+    tagTypes
 }
 
 function parse(html) {
@@ -48,12 +51,11 @@ function parseNode(parent) {
 function parseHtmlBlock(parent) {
     let tag = parseTag();
 
-    if (tag.closing) {
+    if (tag.tagType === tagTypes.closing) {
         if (parent && parent.tagName === tag.tagName) {
             // [^0] this is the closing tag of the upper level block (mustn't be put into the list)
             parent.endHtml = tag.tagName;
-            parent.closing = true;
-            parent.opening = false;
+            parent.tagType = tagTypes.paired;
             return;
         }
         missingMatchingStartTag(tag);
@@ -63,27 +65,28 @@ function parseHtmlBlock(parent) {
     tag.parent = parent;
     _nodes.push(tag); // put into this level
 
-    if (tag.void) // just one tag on this level
+    if (tag.tagType === tagTypes.void) // just one tag on this level
         return;
 
     // it is `tag.opening`, prepare going down to the next level, create child-nodes
     let nodes = _nodes;
     _nodes = [];
-
     parseDocument(tag); // possibly returns from [^0] to this level
-
     tag.children = _nodes; // save the deeper level nodes as children of the current open tag and restore the node list
     _nodes = nodes;
+
+    if (tag.tagType !== tagTypes.paired)
+        missingMatchingEndTag(tag);
 }
 
 // tag := < + [/]* + name + spaces + [/]* + >
 function parseTag() {
     match('<');
-    var node = new HtmlNode(nodeType.tag, _ch);
+    var node = new HtmlNode(nodeTypes.tag, _ch);
     readChar();
 
     if (_ch === '/') {
-        node.closing = true;
+        node.tagType = tagTypes.closing
         node.startHtml += _ch;
         readChar();
     }
@@ -91,14 +94,17 @@ function parseTag() {
     parseTagName(node);
     parseSpace(node);
 
-    if (!node.closing) {
+    if (node.tagType !== tagTypes.closing) {
         if (_ch === '/') {
-            node.void = true; // https://www.w3.org/TR/html5/syntax.html#void-elements
+            node.tagType = tagTypes.void; // https://www.w3.org/TR/html5/syntax.html#void-elements
             node.startHtml += _ch;
             readChar();
+        } 
+        else if (voidTagNames.includes(node.tagName.toLowerCase())){
+            node.tagType = tagTypes.void;
         }
         else {
-            node.opening = true;
+            node.tagType = tagTypes.opening;
         }
     }
 
@@ -129,7 +135,7 @@ function parseTagName(node) {
 
 // <text> = [<char>]*;
 function parseText(parent) {
-    var node = new HtmlNode(nodeType.text, '');
+    var node = new HtmlNode(nodeTypes.text, '');
     node.parent = parent;
 
     while (!end() && _ch != '<') {
@@ -177,7 +183,11 @@ function matchAlpha(name = "Alphabet letter") {
 }
 
 function missingMatchingStartTag(tag) {
-    return onError(er.missingMatchingStartTag(tag.startHtml, _line + 1, _pos - tag.startHtml.length))
+    return onError(er.missingMatchingStartTag(tag.startHtml, _line + 1, _pos - tag.startHtml.length));
+}
+
+function missingMatchingEndTag(tag){
+    return onError(er.missingMatchingEndTag(tag.startHtml, _line + 1, _pos - tag.startHtml.length));
 }
 
 function onError(message, capture) {

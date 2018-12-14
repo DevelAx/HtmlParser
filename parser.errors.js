@@ -6,6 +6,10 @@ module.exports = {
     },
 
     missingMatchingStartTag(tag, line, pos) {
-        return `'${tag}' tag at line ${line} pos ${pos} is missing mathing start tag.`;
+        return `'${tag}' tag at line ${line} pos ${pos} is missing matching start tag.`;
+    },
+
+    missingMatchingEndTag(tag, line, pos) {
+        return `'${tag}' tag at line ${line} pos ${pos} is missing matching end tag.`;
     }
 }
