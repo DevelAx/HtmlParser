@@ -18,7 +18,9 @@ module.exports = {
 function parse(html) {
     init(html);
     parseDocument();
-    return _nodes;
+    var root = new HtmlNode(nodeTypes.tag, _ch);
+    root.children = _nodes;
+    return root;
 }
 
 //-------------CRADLE----------------
@@ -61,16 +63,17 @@ function parseHtmlBlock(parent) {
         }
         missingMatchingStartTag(tag);
     }
-    else if (tag.tagType === tagTypes.doctype) {
-        if (parent || _nodes.some(n => n.tagType))
+    
+    _nodes.push(tag); // put into this level
+
+    if (tag.tagType === tagTypes.doctype) {
+        if (parent || _nodes.some(n => n.tagType && n.tagType !== tagTypes.doctype))
             strayDoctype(tag);
         else
             return;
     }
 
-    // this is the current level (void or opening) tag
     tag.parent = parent;
-    _nodes.push(tag); // put into this level
 
     if (tag.tagType === tagTypes.void) // just one tag on this level
         return;
@@ -189,7 +192,7 @@ function readChar() {
     _pos += 1;
     _ch = _text[_offset++];
 
-    if (_ch === '\n'){
+    if (_ch === '\n') {
         _line += 1;
         _pos = 0;
     }
@@ -227,20 +230,6 @@ function printError(err) {
     console.error(err);
 }
 
-class HtmlNode {
-    constructor(type, html) {
-        this.type = type;
-        this.startHtml = html;
-        this.line = _line;
-        this.pos = _pos;
-    }
-
-    grabChar() {
-        this.startHtml += _ch;
-        readChar();
-    }
-}
-
 function isAlpha(c) {
     if (!c)
         return false;
@@ -269,4 +258,39 @@ function isSpace(c) {
 
 function isLineSpace(c) {
     return c === ' ' || c === '\t';
+}
+
+
+////////////////////////////////
+class HtmlNode {
+    constructor(type, html = '') {
+        this.type = type;
+        this.startHtml = html;
+        this.endHtml = '';
+        this.line = _line;
+        this.pos = _pos;
+        
+    }
+
+    grabChar() {
+        this.startHtml += _ch;
+        readChar();
+    }
+
+    innerHTML() {
+        let html = '';
+
+        if (this.children) {
+            for (var i = 0; i < this.children.length; i++) {
+                let child = this.children[i];
+                html += child.outerHTML();
+            }
+        }
+
+        return html;
+    }
+
+    outerHTML() {
+        return this.startHtml + this.innerHTML() + this.endHtml;
+    }
 }
