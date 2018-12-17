@@ -4,262 +4,210 @@ const assert = require('assert');
 const expect = require('chai').expect;
 
 describe("Single HTML nodes.", () => {
-    var input = '';
-    it('[#0]: empty string', () => {
-        let result = parser.parse('');
-        expect(result, "result exists").to.exist;
-        expect(result, "result contains 0 nodes").to.have.lengthOf(0);
-    });
 
-    it("[#1]: 'a'", () => {
-        let result = parser.parse('a');
-        expect(result, "result exists").to.exist;
-        expect(result, "result contains 1 node").to.have.lengthOf(1);
-        expect(result[0].type, "node type").to.equal(parser.nodeTypes.text);
-        expect(result[0].startHtml, "node html").to.equal('a');
-    });
+    function singleTextNode(testNum, text) {
+        let len = text ? 1 : 0;
+        it(`[#${testNum}]: ${text}`, () => {
+            let root = parser.parse(text);
+            expect(root, "root").to.exist;
+            expect(root.children, "children").to.exist;
+            expect(root.children.length, "children.length").to.equal(len);
+            expect(root.innerHTML(), "document.innerHTML").to.equal(text);
 
-    it("[#1.1]: 'ab'", () => {
-        let result = parser.parse('ab');
-        expect(result, "result exists").to.exist;
-        expect(result, "result contains 1 node").to.have.lengthOf(1);
-        expect(result[0].type, "node type").to.equal(parser.nodeTypes.text);
-        expect(result[0].startHtml, "node html").to.equal('ab');
-    });
+            if (root.children.length) {
+                let child = root.children[0];
+                expect(child.type, "node type").to.equal(parser.nodeTypes.text);
+                expect(child.startHtml, "startHtml").to.equal(text);
+                expect(child.outerHTML(), "node.outerHTML").to.equal(text);
+                expect(child.innerHTML(), "node.innerHTML").to.equal('');
+            }
+        });
+    }
 
-    it("[#1.2]: 'ab '", () => {
-        let result = parser.parse('ab ');
-        expect(result, "result exists").to.exist;
-        expect(result, "result contains 1 node").to.have.lengthOf(1);
-        expect(result[0].type, "node type").to.equal(parser.nodeTypes.text);
-        expect(result[0].startHtml, "node html").to.equal('ab ');
-    });
+    singleTextNode('0', '');
+    singleTextNode('1', 'a');
+    singleTextNode('1.1', 'ab');
+    singleTextNode('1.2', 'ab ');
+    singleTextNode('1.3', ' ab');
+    singleTextNode('1.4', ' ab ');
+    singleTextNode('1.5', ' ');
 
-    it("[#1.3]: ' ab'", () => {
-        let result = parser.parse(' ab');
-        expect(result, "result exists").to.exist;
-        expect(result, "result contains 1 node").to.have.lengthOf(1);
-        expect(result[0].type, "node type").to.equal(parser.nodeTypes.text);
-        expect(result[0].startHtml, "node html").to.equal(' ab');
-    });
+    function tagError(num, tag, error) {
+        it(`[#${num}]: ${tag}`, () => {
+            let result = () => parser.parse(tag);
+            expect(result, "error").to.throw(error);
+        });
+    }
 
-    it("[#1.4]: ' ab '", () => {
-        let result = parser.parse(' ab ');
-        expect(result, "result exists").to.exist;
-        expect(result, "result contains 1 node").to.have.lengthOf(1);
-        expect(result[0].type, "node type").to.equal(parser.nodeTypes.text);
-        expect(result[0].startHtml, "node html").to.equal(' ab ');
-    });
+    tagError("2", '<a>', `'<a>' tag at line 1 pos 1 is missing matching end tag.`);
+    tagError("2.1", '<ab>', `'<ab>' tag at line 1 pos 1 is missing matching end tag.`);
 
-    it("[#1.5]: ' '", () => {
-        let result = parser.parse(' ');
-        expect(result, "result exists").to.exist;
-        expect(result, "result contains 1 node").to.have.lengthOf(1);
-        expect(result[0].type, "node type").to.equal(parser.nodeTypes.text);
-        expect(result[0].startHtml, "node html").to.equal(' ');
-    });
+    function voidTag(n, tag) {
+        it(`[#${n}]: ${tag}`, () => {
+            let root = parser.parse(tag);
+            expect(root, "result exists").to.exist;
+            expect(root.children, "children").to.exist;
+            expect(root.children.length, "children.length").to.equal(1);
+            expect(root.innerHTML(), "document.innerHTML").to.equal(tag);
+            let child = root.children[0];
+            expect(child.type, "node type").to.equal(parser.nodeTypes.tag);
+            expect(child.tagType, "tag type").to.equal(parser.tagTypes.void);
+            expect(child.startHtml, "startHtml").to.equal(tag);
+            expect(child.outerHTML(), "node.outerHTML").to.equal(tag);
+            expect(child.innerHTML(), "node.innerHTML").to.equal('');
+        });
+    }
+
+    voidTag("2.2", '<br>');
+    voidTag("2.3", '<a/>');
+    voidTag("2.4", '<a />');
+
+    tagError("3", '<', "'tag name' expected at line 1 pos 2.");
+    tagError("3.1", '< ', "'tag name' expected at line 1 pos 2.");
+    tagError("3.2", '<a', "'>' expected at line 1 pos 3.");
+    tagError("3.3", '<a/ >', "'>' expected at line 1 pos 4.");
+    tagError("3.4", '<a /', "'>' expected at line 1 pos 5.");
+    tagError("3.5", '<a / >', "'>' expected at line 1 pos 5.");
 
     {
-        let test = '<a>';
-        it("[#2]: " + test, () => {
-            let result = () => parser.parse(test);
-            expect(result, "error expected").to.throw(`'<a>' tag at line 1 pos 1 is missing matching end tag.`);
+        let html = '<a/>b';
+        it(`[#6]: ${html}`, () => {
+            let root = parser.parse(html);
+            expect(root, "result exists").to.exist;
+            expect(root.children, "children").to.exist;
+            expect(root.children.length, "children.length").to.equal(2);
+            expect(root.innerHTML(), "document.innerHTML").to.equal(html);
+            let tag = root.children[0];
+            expect(tag.type, "node type").to.equal(parser.nodeTypes.tag);
+            expect(tag.tagType, "tag type").to.equal(parser.tagTypes.void);
+            expect(tag.startHtml, "startHtml").to.equal('<a/>');
+            expect(tag.outerHTML(), "node.outerHTML").to.equal('<a/>');
+            expect(tag.innerHTML(), "node.innerHTML").to.equal('');
+            let text = root.children[1];
+            expect(text.type, "node type").to.equal(parser.nodeTypes.text);
+            expect(text.tagType, "tag type").not.to.exist;
+            expect(text.startHtml, "startHtml").to.equal('b');
+            expect(text.outerHTML(), "node.outerHTML").to.equal('b');
+            expect(text.innerHTML(), "node.innerHTML").to.equal('');
         });
     }
 
     {
-        let test = '<ab>';
-        it("[#2.1]: " + test, () => {
-            let result = () => parser.parse(test);
-            expect(result, "error expected").to.throw(`'<ab>' tag at line 1 pos 1 is missing matching end tag.`);
+        let html = 'b<a/>';
+        it(`[#6.1]: ${html}`, () => {
+            let root = parser.parse(html);
+            expect(root, "result exists").to.exist;
+            expect(root.children, "children").to.exist;
+            expect(root.children.length, "children.length").to.equal(2);
+            expect(root.innerHTML(), "document.innerHTML").to.equal(html);
+            let tag = root.children[1];
+            expect(tag.type, "node type").to.equal(parser.nodeTypes.tag);
+            expect(tag.tagType, "tag type").to.equal(parser.tagTypes.void);
+            expect(tag.startHtml, "startHtml").to.equal('<a/>');
+            expect(tag.outerHTML(), "node.outerHTML").to.equal('<a/>');
+            expect(tag.innerHTML(), "node.innerHTML").to.equal('');
+            let text = root.children[0];
+            expect(text.type, "node type").to.equal(parser.nodeTypes.text);
+            expect(text.tagType, "tag type").not.to.exist;
+            expect(text.startHtml, "startHtml").to.equal('b');
+            expect(text.outerHTML(), "node.outerHTML").to.equal('b');
+            expect(text.innerHTML(), "node.innerHTML").to.equal('');
         });
     }
 
     {
-        let test = '<br>';
-        it("[#2.2]: " + test, () => {
-            let result = parser.parse(test);
-            expect(result, "result exists").to.exist;
-            expect(result, "result contains 1 node").to.have.lengthOf(1);
-            expect(result[0].type, "node type").to.equal(parser.nodeTypes.tag);
-            expect(result[0].tagType, "tag type").to.equal(parser.tagTypes.void);
-            expect(result[0].startHtml, "node html").to.equal(test);
+        let html = 'b<a/>c';
+        it(`[#6.2]: ${html}`, () => {
+            let root = parser.parse(html);
+            expect(root, "result exists").to.exist;
+            expect(root.children, "children").to.exist;
+            expect(root.children.length, "children.length").to.equal(3);
+            expect(root.innerHTML(), "document.innerHTML").to.equal(html);
+            let tag = root.children[1];
+            expect(tag.type, "node type").to.equal(parser.nodeTypes.tag);
+            expect(tag.tagType, "tag type").to.equal(parser.tagTypes.void);
+            expect(tag.startHtml, "startHtml").to.equal('<a/>');
+            expect(tag.outerHTML(), "node.outerHTML").to.equal('<a/>');
+            expect(tag.innerHTML(), "node.innerHTML").to.equal('');
+            let text = root.children[0];
+            expect(text.type, "node type").to.equal(parser.nodeTypes.text);
+            expect(text.tagType, "tag type").not.to.exist;
+            expect(text.startHtml, "startHtml").to.equal('b');
+            expect(text.outerHTML(), "node.outerHTML").to.equal('b');
+            expect(text.innerHTML(), "node.innerHTML").to.equal('');
+            text = root.children[2];
+            expect(text.type, "node type").to.equal(parser.nodeTypes.text);
+            expect(text.tagType, "tag type").not.to.exist;
+            expect(text.startHtml, "startHtml").to.equal('c');
+            expect(text.outerHTML(), "node.outerHTML").to.equal('c');
+            expect(text.innerHTML(), "node.innerHTML").to.equal('');
         });
     }
-
-    it("[#4]: '<a/>'", () => {
-        let result = parser.parse('<a/>');
-        expect(result, "result exists").to.exist;
-        expect(result, "result contains 1 node").to.have.lengthOf(1);
-        expect(result[0].type, "node type").to.equal(parser.nodeTypes.tag);
-        expect(result[0].startHtml, "node html").to.equal('<a/>');
-        expect(result[0].tagType, "self closing tag").to.equal(parser.tagTypes.void);
-    });
-
-    it("[#3]: '<'", () => {
-        let result = () => parser.parse('<');
-        expect(result, "throws error").to.throw("'tag name' expected at line 1 pos 2.");
-    });
-
-    it("[#3.1]: '< '", () => {
-        let result = () => parser.parse('< ');
-        expect(result, "throws error").to.throw("'tag name' expected at line 1 pos 2.");
-    });
-
-    it("[#3.3]: '<a'", () => {
-        let result = () => parser.parse('<a');
-        expect(result, "throws error").to.throw("'>' expected at line 1 pos 3.");
-    });
-
-    it("[#4]: '<a/>'", () => {
-        let result = parser.parse('<a/>');
-        expect(result, "result exists").to.exist;
-        expect(result, "result contains 1 node").to.have.lengthOf(1);
-        expect(result[0].type, "node type").to.equal(parser.nodeTypes.tag);
-        expect(result[0].startHtml, "node html").to.equal('<a/>');
-        expect(result[0].tagType, "self closing tag").to.equal(parser.tagTypes.void);
-    });
-
-    it("[#4.1]: '<a />'", () => {
-        let result = parser.parse('<a />');
-        expect(result, "result exists").to.exist;
-        expect(result, "result contains 1 node").to.have.lengthOf(1);
-        expect(result[0].type, "node type").to.equal(parser.nodeTypes.tag);
-        expect(result[0].startHtml, "node html").to.equal('<a />');
-        expect(result[0].tagType, "self closing tag").to.equal(parser.tagTypes.void);
-    });
-
-    it("[#5]: '<a/ >'", () => {
-        let result = () => parser.parse('<a/ >');
-        expect(result, "throws error").to.throw("'>' expected at line 1 pos 4.");
-    });
-
-    it("[#5.1]: '<a /'", () => {
-        let result = () => parser.parse('<a /');
-        expect(result, "throws error").to.throw("'>' expected at line 1 pos 5.");
-    });
-
-    it("[#5.2]: '<a / >'", () => {
-        let result = () => parser.parse('<a / >');
-        expect(result, "throws error").to.throw("'>' expected at line 1 pos 5.");
-    });
-
-    it("[#6]: '<a/>b'", () => {
-        let result = parser.parse('<a/>b');
-        expect(result, "result exists").to.exist;
-        expect(result, "result contains 2 node").to.have.lengthOf(2);
-        expectNode(result[0], {
-            type: parser.nodeTypes.tag,
-            tagName: 'a',
-            startHtml: '<a/>',
-            tagType: parser.tagTypes.void
-        });
-        expectNode(result[1], {
-            type: parser.nodeTypes.text,
-            startHtml: 'b'
-        });
-    });
 
     {
-        let test6_1 = 'b<a/>';
-        it("[#6.1]: " + test6_1, () => {
-            let result = parser.parse(test6_1);
-            expect(result, "result exists").to.exist;
-            expect(result, "result contains 2 node").to.have.lengthOf(2);
-            expectNode(result[0], {
-                type: parser.nodeTypes.text,
-                startHtml: 'b'
-            });
-            expectNode(result[1], {
-                type: parser.nodeTypes.tag,
-                tagName: 'a',
-                startHtml: '<a/>',
-                tagType: parser.tagTypes.void
-            });
+        let html = '<a>c</a>';
+        it(`[#7]: ${html}`, () => {
+            let root = parser.parse(html);
+            expect(root, "result exists").to.exist;
+            expect(root.children, "children").to.exist;
+            expect(root.children.length, "children.length").to.equal(1);
+            expect(root.innerHTML(), "document.innerHTML").to.equal(html);
+            let tag = root.children[0];
+            expect(tag.parent, "parent").not.to.exist;
+            expect(tag.type, "node type").to.equal(parser.nodeTypes.tag);
+            expect(tag.tagType, "tag type").to.equal(parser.tagTypes.paired);
+            expect(tag.startHtml, "startHtml").to.equal('<a>');
+            expect(tag.endHtml, "endHtml").to.equal('</a>');
+            expect(tag.outerHTML(), "node.outerHTML").to.equal(html);
+            expect(tag.innerHTML(), "node.innerHTML").to.equal('c');
+            expect(tag.children, "children").to.exist;
+            expect(tag.children.length, "children.length").to.equal(1);
+            let node = tag.children[0];
+            expect(node.parent, "parent").to.exist;
+            expect(node.parent.startHtml, "startHtml").to.equal('<a>');
+            expect(node.parent.endHtml, "endHtml").to.equal('</a>');
+            expect(node.type, "node type").to.equal(parser.nodeTypes.text);
+            expect(node.tagType, "tag type").not.to.exist;
+            expect(node.startHtml, "startHtml").to.equal('c');
+            expect(node.outerHTML(), "node.outerHTML").to.equal('c');
+            expect(node.innerHTML(), "node.innerHTML").to.equal('');
         });
     }
+
     {
-        let test6_2 = 'b<a/>c';
-        it("[#6.1]: " + test6_2, () => {
-            let result = parser.parse(test6_2);
-            expect(result, "result exists").to.exist;
-            expect(result, "result contains 3 node").to.have.lengthOf(3);
-            expectNode(result[0], {
-                type: parser.nodeTypes.text,
-                startHtml: 'b'
-            });
-            expectNode(result[1], {
-                type: parser.nodeTypes.tag,
-                tagName: 'a',
-                startHtml: '<a/>',
-                tagType: parser.tagTypes.void
-            });
-            expectNode(result[2], {
-                type: parser.nodeTypes.text,
-                startHtml: 'c'
-            });
+        let html = '<a><c/></a>';
+        it(`[#7.1]: ${html}`, () => {
+            let root = parser.parse(html);
+            expect(root, "result exists").to.exist;
+            expect(root.children, "children").to.exist;
+            expect(root.children.length, "children.length").to.equal(1);
+            expect(root.innerHTML(), "document.innerHTML").to.equal(html);
+            let tag = root.children[0];
+            expect(tag.parent, "parent").not.to.exist;
+            expect(tag.type, "node type").to.equal(parser.nodeTypes.tag);
+            expect(tag.tagType, "tag type").to.equal(parser.tagTypes.paired);
+            expect(tag.startHtml, "startHtml").to.equal('<a>');
+            expect(tag.endHtml, "endHtml").to.equal('</a>');
+            expect(tag.outerHTML(), "tag.outerHTML").to.equal(html);
+            expect(tag.innerHTML(), "tag.innerHTML").to.equal('<c/>');
+            expect(tag.children, "children").to.exist;
+            expect(tag.children.length, "children.length").to.equal(1);
+            let tag2 = tag.children[0];
+            expect(tag2.parent, "parent").to.exist;
+            expect(tag2.parent.startHtml, "startHtml").to.equal('<a>');
+            expect(tag2.parent.endHtml, "endHtml").to.equal('</a>');
+            expect(tag2.type, "tag2 type").to.equal(parser.nodeTypes.tag);
+            expect(tag2.tagType, "tag type").to.equal(parser.tagTypes.void);
+            expect(tag2.startHtml, "startHtml").to.equal('<c/>');
+            expect(tag2.outerHTML(), "tag2.outerHTML").to.equal('<c/>');
+            expect(tag2.innerHTML(), "tag2.innerHTML").to.equal('');
         });
+
     }
-    {
-        let test = '<a>c</a>';
-        it("[#7]: " + test, () => {
-            let result = parser.parse(test);
-            expect(result, "result exists").to.exist;
-            expect(result, "result contains 1 node").to.have.lengthOf(1);
-            expectNode(result[0], {
-                type: parser.nodeTypes.tag,
-                tagName: 'a',
-                startHtml: '<a>',
-                tagType: parser.tagTypes.paired
-            });
-            expect(result[0].children, "children").to.exist;
-            expect(result[0].children, "children").to.have.lengthOf(1);
-            expectNode(result[0].children[0], {
-                type: parser.nodeTypes.text,
-                startHtml: 'c'
-            });
-            expect(result[0].children[0].parent, "parent").to.exist;
-            expect(result[0].children[0].parent, "parent").to.equal(result[0]);
-        });
-    }
-    {
-        let test = '<a><c/></a>';
-        it("[#7.1]: " + test, () => {
-            let result = parser.parse(test);
-            expect(result, "result exists").to.exist;
-            expect(result, "result contains 1 node").to.have.lengthOf(1);
-            expectNode(result[0], {
-                type: parser.nodeTypes.tag,
-                tagName: 'a',
-                startHtml: '<a>',
-                tagType: parser.tagTypes.paired
-            });
-            expect(result[0].children, "children").to.exist;
-            expect(result[0].children, "children").to.have.lengthOf(1);
-            expectNode(result[0].children[0], {
-                type: parser.nodeTypes.tag,
-                tagName: 'c',
-                startHtml: '<c/>',
-                tagType: parser.tagTypes.void
-            });
-            expect(result[0].children[0].parent, "parent").to.exist;
-            expect(result[0].children[0].parent, "parent").to.equal(result[0]);
-        });
-    }
-    {
-        let test = '</a>';
-        it("[#7.2]: " + test, () => {
-            let result = () => parser.parse(test);
-            expect(result, "error expected").to.throw(`'</a>' tag at line 1 pos 1 is missing matching start tag.`);
-        });
-    }
-    {
-        let test = '<a></c></a>';
-        it("[#7.3]: " + test, () => {
-            let result = () => parser.parse(test);
-            expect(result, "error expected").to.throw(`'</c>' tag at line 1 pos 4 is missing matching start tag.`);
-        });
-    }
+
+    tagError("7.2", '</a>', `'</a>' tag at line 1 pos 1 is missing matching start tag.`);
+    tagError("7.3", '<a></c></a>', `'</c>' tag at line 1 pos 4 is missing matching start tag.`);
+
     {
         let test = `
 <!DOCTYPE html>
@@ -275,13 +223,14 @@ describe("Single HTML nodes.", () => {
 </body>
 </html>`;
         it("[#10]: " + test, () => {
-            let result = parser.parse(test);
-            expect(result, "result exists").to.exist;
+            let root = parser.parse(test);
+            expect(root, "result exists").to.exist;
+            expect(root.outerHTML(), "reverse HTML").to.equal(test);
         });
     }
 
     {
-        let test = `
+        let html = `
 <html>
 <!DOCTYPE html>
 <head>
@@ -294,10 +243,7 @@ describe("Single HTML nodes.", () => {
 
 </body>
 </html>`;
-        it("[#10.1]: " + test, () => {
-            let result = () => parser.parse(test);
-            expect(result, "error expected").to.throw(`Stray doctype at line 3 pos 1. '<!DOCTYPE html>' tag must be placed in the beginning before any tags.`);
-        });
+        tagError("10.1", html, `Stray doctype at line 3 pos 1. '<!DOCTYPE html>' tag must be placed in the beginning before any tags.`);
     }
 });
 
